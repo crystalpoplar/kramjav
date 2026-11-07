@@ -4,7 +4,7 @@ Baseline Java project for hosting web services, built with Spring Boot.
 
 ## Requirements
 
-- Java 21
+- Java 25 (latest LTS)
 
 ## Run locally
 
