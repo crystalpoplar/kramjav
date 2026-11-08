@@ -1,5 +1,6 @@
 package com.example.kramjav.service;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -39,6 +40,17 @@ public class OllamaAiService {
 		}
 
 		String model = resolveModel(request.model());
+		Map<String, Object> payload = buildPayload(model, request, messages);
+
+		AiResponse response = callOllamaWithRetry(payload, model, 1);
+		if (response != null) {
+			return response;
+		}
+
+		throw new IllegalStateException("Ollama returned an invalid payload for model '" + model + "'.");
+	}
+
+	private Map<String, Object> buildPayload(String model, AiRequest request, List<AiRequest.Message> messages) {
 		Map<String, Object> payload = new HashMap<>();
 		payload.put("model", model);
 		payload.put("stream", false);
@@ -52,7 +64,10 @@ public class OllamaAiService {
 			ollamaMessages.add(Map.of("role", role, "content", message.content()));
 		}
 		payload.put("messages", ollamaMessages);
+		return payload;
+	}
 
+	private AiResponse callOllamaWithRetry(Map<String, Object> payload, String model, int attempt) {
 		try {
 			Map<String, Object> response = restClient.post()
 				.uri("/api/chat")
@@ -61,27 +76,84 @@ public class OllamaAiService {
 				.retrieve()
 				.body(Map.class);
 
-			if (response == null) {
-				throw new IllegalStateException("Ollama did not return a response payload.");
+			String extracted = extractResponseText(response);
+			if (extracted != null) {
+				return new AiResponse(model, extracted);
 			}
-
-			Object message = response.get("message");
-			if (message instanceof Map<?, ?> messageMap) {
-				Object content = messageMap.get("content");
-				if (content instanceof String contentText && !contentText.isBlank()) {
-					return new AiResponse(model, contentText);
-				}
-			}
-
-			Object responseText = response.get("response");
-			if (responseText instanceof String contentText && !contentText.isBlank()) {
-				return new AiResponse(model, contentText);
-			}
-
-			throw new IllegalStateException("Ollama returned an unexpected payload.");
 		} catch (RestClientException ex) {
-			log.error("Unable to reach the local Ollama service at {}", properties.baseUrl(), ex);
+			log.error("Unable to reach the local Ollama service at {} for model {}", properties.baseUrl(), model, ex);
+			if (attempt <= 1) {
+				restartModel(model);
+				return callOllamaWithRetry(payload, model, attempt + 1);
+			}
 			throw new IllegalStateException("Unable to reach the local Ollama service at " + properties.baseUrl(), ex);
+		}
+
+		if (attempt <= 1) {
+			log.warn("Invalid Ollama response for model {}. Attempting best-effort restart and retry.", model);
+			restartModel(model);
+			return callOllamaWithRetry(payload, model, attempt + 1);
+		}
+
+		return null;
+	}
+
+	private String extractResponseText(Map<String, Object> response) {
+		if (response == null) {
+			return null;
+		}
+
+		Object message = response.get("message");
+		if (message instanceof Map<?, ?> messageMap) {
+			Object content = messageMap.get("content");
+			if (content instanceof String contentText && isUsableContent(contentText)) {
+				return contentText;
+			}
+		}
+
+		Object responseText = response.get("response");
+		if (responseText instanceof String contentText && isUsableContent(contentText)) {
+			return contentText;
+		}
+
+		return null;
+	}
+
+	private boolean isUsableContent(String content) {
+		if (content == null) {
+			return false;
+		}
+		String trimmed = content.trim();
+		if (trimmed.isEmpty()) {
+			return false;
+		}
+		if (trimmed.length() < 2) {
+			return false;
+		}
+		if (trimmed.chars().anyMatch(ch -> ch == 0)) {
+			return false;
+		}
+		return true;
+	}
+
+	private void restartModel(String model) {
+		String normalizedModel = (model == null || model.isBlank()) ? properties.defaultModel() : model.trim();
+		executeCliCommand("ollama stop " + normalizedModel);
+		executeCliCommand("ollama start " + normalizedModel);
+	}
+
+	private void executeCliCommand(String command) {
+		try {
+			Process process = new ProcessBuilder("cmd", "/c", command)
+				.redirectErrorStream(true)
+				.start();
+			int exitCode = process.waitFor();
+			if (exitCode != 0) {
+				log.warn("Ollama restart command exited with status {}: {}", exitCode, command);
+			}
+		} catch (IOException | InterruptedException ex) {
+			Thread.currentThread().interrupt();
+			log.warn("Best-effort restart of Ollama model failed for command: {}", command, ex);
 		}
 	}
 
