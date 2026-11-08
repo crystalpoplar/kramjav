@@ -1,10 +1,12 @@
 # kramjav
 
-Baseline Java project for hosting web services, built with Spring Boot.
+Baseline Java project for hosting web services, built with Spring Boot and backed by a local Ollama service.
 
 ## Requirements
 
 - Java 25 (latest LTS)
+- Local Ollama instance running on the same machine, typically on `http://127.0.0.1:11434`
+- A model pulled into Ollama, for example `llama3.2`
 
 ## Run locally
 
@@ -18,6 +20,38 @@ The service starts on `http://localhost:8080`.
 
 - `GET /api/v1/status` — baseline service status payload
 - `GET /actuator/health` — Spring Boot health endpoint
+- `POST /api/v1/ai/chat` — send a prompt or message list to the local Ollama service
+
+### AI request payload
+
+```json
+{
+  "model": "llama3.2",
+  "prompt": "Summarize this project in one paragraph.",
+  "messages": [
+    { "role": "user", "content": "What is the purpose of kramjav?" }
+  ],
+  "system": "Answer concisely and in plain English."
+}
+```
+
+If `model` is not provided or cannot be resolved, the service falls back to `ollama.default-model` from `application.properties` (default: `llama3.2`). The service calls the local Ollama API on the same machine, so it does not require any external network access.
+
+## Windows service startup
+
+There are Windows startup scripts in the `scripts` directory:
+
+- `scripts\start-kramjav-service.cmd` — direct Windows startup script that calls `java -jar`
+- `scripts\start-kramjav-service.ps1` — PowerShell version for interactive or service-setup scenarios
+- `scripts\install-kramjav-service.ps1` — installs the application as a Windows service using NSSM
+
+Example:
+
+```powershell
+.\scripts\install-kramjav-service.ps1 -ServiceName "KramjavAI"
+```
+
+The scripts build the jar before installation or startup, and then launch the Spring Boot application against the local Ollama service.
 
 ## Run tests
 

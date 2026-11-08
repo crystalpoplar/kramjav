@@ -5,18 +5,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-@WebMvcTest(StatusController.class)
 class StatusControllerTests {
-
-	@Autowired
-	private MockMvc mockMvc;
 
 	@Test
 	void statusEndpointReturnsServiceHealthPayload() throws Exception {
+		MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new StatusController()).build();
+
 		mockMvc.perform(get("/api/v1/status"))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.service").value("kramjav"))
