@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.example.kramjav.service.AiResponse;
 import com.example.kramjav.service.OllamaAiService;
+import com.example.kramjav.service.ServiceBusyException;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -35,6 +36,8 @@ public class AiController {
 				"response", response.response(),
 				"provider", "ollama"
 			));
+		} catch (ServiceBusyException ex) {
+			return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of("error", ex.getMessage()));
 		} catch (IllegalArgumentException ex) {
 			return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));
 		} catch (IllegalStateException ex) {

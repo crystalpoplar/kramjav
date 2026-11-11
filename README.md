@@ -22,6 +22,8 @@ The service starts on `http://localhost:8080`.
 - `GET /actuator/health` — Spring Boot health endpoint
 - `POST /api/v1/ai/chat` — send a prompt or message list to the local Ollama service
 
+By default, AI requests are rejected while this PC has recent local user activity so Ollama load can be offloaded to another machine. Disable this by setting `ollama.reject-requests-when-pc-active=false`. The activity lookback window is configured with `ollama.activity-window-seconds` (default: `60`).
+
 When Ollama returns an empty or unusable payload, the service performs a best-effort restart by issuing `ollama stop <model>` and `ollama start <model>` before retrying once.
 
 ### AI request payload

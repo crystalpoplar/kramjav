@@ -1,6 +1,7 @@
 package com.example.kramjav.service;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -23,10 +24,12 @@ public class OllamaAiService {
 
 	private final RestClient restClient;
 	private final OllamaProperties properties;
+	private final PcActivityDetector pcActivityDetector;
 
-	public OllamaAiService(RestClient restClient, OllamaProperties properties) {
+	public OllamaAiService(RestClient restClient, OllamaProperties properties, PcActivityDetector pcActivityDetector) {
 		this.restClient = restClient;
 		this.properties = properties;
+		this.pcActivityDetector = pcActivityDetector;
 	}
 
 	public AiResponse generate(AiRequest request) {
@@ -39,6 +42,8 @@ public class OllamaAiService {
 			throw new IllegalArgumentException("Provide a prompt or at least one message.");
 		}
 
+		rejectIfPcIsActive();
+
 		String model = resolveModel(request.model());
 		Map<String, Object> payload = buildPayload(model, request, messages);
 
@@ -48,6 +53,17 @@ public class OllamaAiService {
 		}
 
 		throw new IllegalStateException("Ollama returned an invalid payload for model '" + model + "'.");
+	}
+
+	private void rejectIfPcIsActive() {
+		if (!Boolean.TRUE.equals(properties.rejectRequestsWhenPcActive())) {
+			return;
+		}
+
+		Duration activityWindow = Duration.ofSeconds(properties.activityWindowSeconds());
+		if (pcActivityDetector.hasRecentUserInput(activityWindow)) {
+			throw new ServiceBusyException("Request rejected because this PC is active and Ollama offload is enabled.");
+		}
 	}
 
 	private Map<String, Object> buildPayload(String model, AiRequest request, List<AiRequest.Message> messages) {
