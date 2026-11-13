@@ -16,7 +16,7 @@ class OllamaAiServiceTests {
 	void resolveModelUsesExplicitModelWhenProvided() {
 		OllamaAiService service = new OllamaAiService(
 			RestClient.builder().build(),
-			new OllamaProperties("http://127.0.0.1:11434", "llama3.2", true, 60),
+			new OllamaProperties("http://127.0.0.1:11434", "llama3.2", true, 60, 20L),
 			window -> false
 		);
 
@@ -27,7 +27,7 @@ class OllamaAiServiceTests {
 	void resolveModelFallsBackToConfiguredDefault() {
 		OllamaAiService service = new OllamaAiService(
 			RestClient.builder().build(),
-			new OllamaProperties("http://127.0.0.1:11434", "llama3.2", true, 60),
+			new OllamaProperties("http://127.0.0.1:11434", "llama3.2", true, 60, 20L),
 			window -> false
 		);
 
@@ -39,7 +39,7 @@ class OllamaAiServiceTests {
 	void generateRejectsWhenPcActivityGatingIsEnabled() {
 		OllamaAiService service = new OllamaAiService(
 			RestClient.builder().baseUrl("http://127.0.0.1:11434").build(),
-			new OllamaProperties("http://127.0.0.1:11434", "llama3.2", true, 60),
+			new OllamaProperties("http://127.0.0.1:11434", "llama3.2", true, 60, 20L),
 			window -> true
 		);
 
@@ -54,7 +54,7 @@ class OllamaAiServiceTests {
 		};
 		OllamaAiService service = new OllamaAiService(
 			RestClient.builder().baseUrl("http://127.0.0.1:65535").build(),
-			new OllamaProperties("http://127.0.0.1:11434", "llama3.2", false, 60),
+			new OllamaProperties("http://127.0.0.1:11434", "llama3.2", false, 60, 20L),
 			detector
 		);
 

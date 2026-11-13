@@ -24,7 +24,7 @@ The service starts on `http://localhost:8080`.
 
 By default, AI requests are rejected while this PC has recent local user activity so Ollama load can be offloaded to another machine. Disable this by setting `ollama.reject-requests-when-pc-active=false`. The activity lookback window is configured with `ollama.activity-window-seconds` (default: `60`).
 
-When Ollama returns an empty or unusable payload, the service performs a best-effort restart by issuing `ollama stop <model>` and `ollama start <model>` before retrying once.
+Requests to Ollama also time out after `ollama.request-timeout-seconds` (default: `20`), and if the request hangs or the response is invalid the service performs a best-effort restart by issuing `ollama stop <model>` and `ollama start <model>` before retrying once.
 
 ### AI request payload
 
