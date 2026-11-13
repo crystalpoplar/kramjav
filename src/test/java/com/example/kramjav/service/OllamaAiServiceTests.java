@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.time.Duration;
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;
@@ -44,6 +45,17 @@ class OllamaAiServiceTests {
 		);
 
 		assertThrows(ServiceBusyException.class, () -> service.generate(new AiRequest(null, "Hello", null, null)));
+	}
+
+	@Test
+	void generateRejectsRequestsWithoutUserMessages() {
+		OllamaAiService service = new OllamaAiService(
+			RestClient.builder().build(),
+			new OllamaProperties("http://127.0.0.1:11434", "llama3.2", false, 60, 20L),
+			window -> false
+		);
+
+		assertThrows(IllegalArgumentException.class, () -> service.generate(new AiRequest(null, null, List.of(new AiRequest.Message("system", "Only system text")), null)));
 	}
 
 	@Test

@@ -41,6 +41,7 @@ public class OllamaAiService {
 		if (messages.isEmpty()) {
 			throw new IllegalArgumentException("Provide a prompt or at least one message.");
 		}
+		validateUserMessages(messages);
 
 		rejectIfPcIsActive();
 
@@ -53,6 +54,14 @@ public class OllamaAiService {
 		}
 
 		throw new IllegalStateException("Ollama returned an invalid payload for model '" + model + "'.");
+	}
+
+	private void validateUserMessages(List<AiRequest.Message> messages) {
+		boolean hasUserMessage = messages.stream()
+			.anyMatch(message -> "user".equalsIgnoreCase(message.role()) && message.content() != null && !message.content().isBlank());
+		if (!hasUserMessage) {
+			throw new IllegalArgumentException("Request must contain at least one user message with content.");
+		}
 	}
 
 	private void rejectIfPcIsActive() {
@@ -84,6 +93,7 @@ public class OllamaAiService {
 	}
 
 	private AiResponse callOllamaWithRetry(Map<String, Object> payload, String model, int attempt) {
+		String payloadSummary = summarizePayload(payload);
 		try {
 			Map<String, Object> response = restClient.post()
 				.uri("/api/chat")
@@ -97,7 +107,10 @@ public class OllamaAiService {
 				return new AiResponse(model, extracted);
 			}
 		} catch (RestClientException ex) {
-			log.error("Unable to reach the local Ollama service at {} for model {}", properties.baseUrl(), model, ex);
+			log.error("Ollama request failed for model {}. Triggering message payload: {}. Error: {}", model, payloadSummary, ex.getMessage(), ex);
+			if (isMalformedRequestError(ex)) {
+				throw new IllegalArgumentException("Ollama rejected the request because it did not contain a valid user prompt. " + payloadSummary, ex);
+			}
 			if (attempt <= 1) {
 				restartModel(model);
 				return callOllamaWithRetry(payload, model, attempt + 1);
@@ -106,12 +119,35 @@ public class OllamaAiService {
 		}
 
 		if (attempt <= 1) {
-			log.warn("Invalid Ollama response for model {}. Attempting best-effort restart and retry.", model);
+			log.warn("Invalid Ollama response for model {}. Triggering message payload: {}. Attempting best-effort restart and retry.", model, payloadSummary);
 			restartModel(model);
 			return callOllamaWithRetry(payload, model, attempt + 1);
 		}
 
 		return null;
+	}
+
+	private boolean isMalformedRequestError(RestClientException ex) {
+		String message = ex.getMessage();
+		if (message == null) {
+			return false;
+		}
+		String lower = message.toLowerCase();
+		return lower.contains("no user query found in messages")
+			|| lower.contains("jinja exception")
+			|| lower.contains("invalid request")
+			|| lower.contains("missing user message");
+	}
+
+	private String summarizePayload(Map<String, Object> payload) {
+		if (payload == null) {
+			return "<empty payload>";
+		}
+		Object messages = payload.get("messages");
+		if (messages instanceof List<?> list) {
+			return list.toString();
+		}
+		return payload.toString();
 	}
 
 	private String extractResponseText(Map<String, Object> response) {
