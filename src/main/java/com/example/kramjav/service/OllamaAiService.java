@@ -257,7 +257,6 @@ public class OllamaAiService {
 	private void restartModel(String model) {
 		String normalizedModel = (model == null || model.isBlank()) ? properties.defaultModel() : model.trim();
 		executeCliCommand("ollama stop " + normalizedModel);
-		executeCliCommand("ollama start " + normalizedModel);
 	}
 
 	private void executeCliCommand(String command) {
