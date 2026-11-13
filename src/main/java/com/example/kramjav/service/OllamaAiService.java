@@ -6,7 +6,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,12 +40,13 @@ public class OllamaAiService {
 		if (messages.isEmpty()) {
 			throw new IllegalArgumentException("Provide a prompt or at least one message.");
 		}
-		validateUserMessages(messages);
+		List<AiRequest.Message> normalizedForOllama = normalizeMessageRolesForOllama(request, messages);
+		validateUserMessages(normalizedForOllama);
 
 		rejectIfPcIsActive();
 
 		String model = resolveModel(request.model());
-		Map<String, Object> payload = buildPayload(model, request, messages);
+		Map<String, Object> payload = buildPayload(model, normalizedForOllama);
 
 		AiResponse response = callOllamaWithRetry(payload, model, 1);
 		if (response != null) {
@@ -58,10 +58,48 @@ public class OllamaAiService {
 
 	private void validateUserMessages(List<AiRequest.Message> messages) {
 		boolean hasUserMessage = messages.stream()
-			.anyMatch(message -> "user".equalsIgnoreCase(message.role()) && message.content() != null && !message.content().isBlank());
+			.anyMatch(message -> "user".equals(normalizeRole(message.role())) && message.content() != null && !message.content().isBlank());
 		if (!hasUserMessage) {
 			throw new IllegalArgumentException("Request must contain at least one user message with content.");
 		}
+	}
+
+	private List<AiRequest.Message> normalizeMessageRolesForOllama(AiRequest request, List<AiRequest.Message> messages) {
+		AiRequest.Message firstMessage = messages.get(0);
+		if (!"system".equals(normalizeRole(firstMessage.role()))) {
+			String payloadSummary = summarizeRequestPayload(request, messages);
+			log.warn("Rejected request because messages[0] is not a system message. Payload: {}", payloadSummary);
+			throw new IllegalArgumentException("Request must include a system message at messages[0].");
+		}
+
+		List<AiRequest.Message> normalized = new ArrayList<>();
+		String firstSystemContent = firstMessage.content();
+		if (request.system() != null && !request.system().isBlank()) {
+			firstSystemContent = request.system().trim() + "\n\n" + firstSystemContent;
+		}
+		normalized.add(new AiRequest.Message("system", firstSystemContent));
+
+		boolean transformedOutOfOrderSystemMessage = false;
+		for (int i = 1; i < messages.size(); i++) {
+			AiRequest.Message message = messages.get(i);
+			String role = normalizeRole(message.role());
+			if ("system".equals(role)) {
+				transformedOutOfOrderSystemMessage = true;
+				normalized.add(new AiRequest.Message("user", "System: " + message.content()));
+				continue;
+			}
+			normalized.add(new AiRequest.Message(role, message.content()));
+		}
+
+		if (transformedOutOfOrderSystemMessage) {
+			log.warn(
+				"Converted out-of-order system messages to user messages for Ollama compatibility. Original payload: {}. Normalized payload: {}",
+				summarizeRequestPayload(request, messages),
+				summarizeMessages(normalized)
+			);
+		}
+
+		return normalized;
 	}
 
 	private void rejectIfPcIsActive() {
@@ -75,21 +113,29 @@ public class OllamaAiService {
 		}
 	}
 
-	private Map<String, Object> buildPayload(String model, AiRequest request, List<AiRequest.Message> messages) {
+	private Map<String, Object> buildPayload(String model, List<AiRequest.Message> messages) {
 		Map<String, Object> payload = new HashMap<>();
 		payload.put("model", model);
 		payload.put("stream", false);
 
 		List<Map<String, String>> ollamaMessages = new ArrayList<>();
-		if (request.system() != null && !request.system().isBlank()) {
-			ollamaMessages.add(Map.of("role", "system", "content", request.system()));
-		}
 		for (AiRequest.Message message : messages) {
-			String role = Optional.ofNullable(message.role()).filter(value -> !value.isBlank()).orElse("user");
+			String role = normalizeRole(message.role());
 			ollamaMessages.add(Map.of("role", role, "content", message.content()));
 		}
 		payload.put("messages", ollamaMessages);
 		return payload;
+	}
+
+	private String normalizeRole(String role) {
+		if (role == null || role.isBlank()) {
+			return "user";
+		}
+		String normalized = role.trim().toLowerCase();
+		if ("assistant".equals(normalized) || "tool".equals(normalized) || "system".equals(normalized) || "user".equals(normalized)) {
+			return normalized;
+		}
+		return "user";
 	}
 
 	private AiResponse callOllamaWithRetry(Map<String, Object> payload, String model, int attempt) {
@@ -136,7 +182,8 @@ public class OllamaAiService {
 		return lower.contains("no user query found in messages")
 			|| lower.contains("jinja exception")
 			|| lower.contains("invalid request")
-			|| lower.contains("missing user message");
+			|| lower.contains("missing user message")
+			|| lower.contains("system message must be first");
 	}
 
 	private String summarizePayload(Map<String, Object> payload) {
@@ -148,6 +195,25 @@ public class OllamaAiService {
 			return list.toString();
 		}
 		return payload.toString();
+	}
+
+	private String summarizeRequestPayload(AiRequest request, List<AiRequest.Message> messages) {
+		Map<String, Object> payload = new HashMap<>();
+		payload.put("model", request.model());
+		payload.put("system", request.system());
+		payload.put("messages", summarizeMessages(messages));
+		return payload.toString();
+	}
+
+	private String summarizeMessages(List<AiRequest.Message> messages) {
+		List<Map<String, String>> summarized = new ArrayList<>();
+		for (AiRequest.Message message : messages) {
+			summarized.add(Map.of(
+				"role", normalizeRole(message.role()),
+				"content", message.content()
+			));
+		}
+		return summarized.toString();
 	}
 
 	private String extractResponseText(Map<String, Object> response) {

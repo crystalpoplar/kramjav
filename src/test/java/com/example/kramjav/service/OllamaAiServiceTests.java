@@ -44,7 +44,17 @@ class OllamaAiServiceTests {
 			window -> true
 		);
 
-		assertThrows(ServiceBusyException.class, () -> service.generate(new AiRequest(null, "Hello", null, null)));
+		AiRequest request = new AiRequest(
+			null,
+			null,
+			List.of(
+				new AiRequest.Message("system", "You are helpful."),
+				new AiRequest.Message("user", "Hello")
+			),
+			null
+		);
+
+		assertThrows(ServiceBusyException.class, () -> service.generate(request));
 	}
 
 	@Test
@@ -59,6 +69,27 @@ class OllamaAiServiceTests {
 	}
 
 	@Test
+	void generateTreatsBlankRoleAsUser() {
+		OllamaAiService service = new OllamaAiService(
+			RestClient.builder().baseUrl("http://127.0.0.1:65535").build(),
+			new OllamaProperties("http://127.0.0.1:11434", "llama3.2", false, 60, 20L),
+			window -> false
+		);
+
+		AiRequest request = new AiRequest(
+			null,
+			null,
+			List.of(
+				new AiRequest.Message("system", "Context"),
+				new AiRequest.Message(" ", "Are you working?")
+			),
+			null
+		);
+
+		assertThrows(IllegalStateException.class, () -> service.generate(request));
+	}
+
+	@Test
 	void generateAllowsRequestsWhenPcActivityGatingIsDisabled() {
 		PcActivityDetector detector = window -> {
 			assertEquals(Duration.ofSeconds(60), window);
@@ -70,6 +101,37 @@ class OllamaAiServiceTests {
 			detector
 		);
 
-		assertThrows(IllegalStateException.class, () -> service.generate(new AiRequest(null, "Hello", null, null)));
+		AiRequest request = new AiRequest(
+			null,
+			null,
+			List.of(
+				new AiRequest.Message("system", "You are helpful."),
+				new AiRequest.Message("user", "Hello")
+			),
+			null
+		);
+
+		assertThrows(IllegalStateException.class, () -> service.generate(request));
+	}
+
+	@Test
+	void generateRejectsWhenFirstMessageIsNotSystem() {
+		OllamaAiService service = new OllamaAiService(
+			RestClient.builder().build(),
+			new OllamaProperties("http://127.0.0.1:11434", "llama3.2", false, 60, 20L),
+			window -> false
+		);
+
+		AiRequest request = new AiRequest(
+			null,
+			null,
+			List.of(
+				new AiRequest.Message("user", "Hello"),
+				new AiRequest.Message("assistant", "Hi")
+			),
+			null
+		);
+
+		assertThrows(IllegalArgumentException.class, () -> service.generate(request));
 	}
 }

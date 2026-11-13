@@ -31,13 +31,15 @@ Requests to Ollama also time out after `ollama.request-timeout-seconds` (default
 ```json
 {
   "model": "llama3.2",
-  "prompt": "Summarize this project in one paragraph.",
   "messages": [
+    { "role": "system", "content": "Answer concisely and in plain English." },
     { "role": "user", "content": "What is the purpose of kramjav?" }
   ],
-  "system": "Answer concisely and in plain English."
+  "system": "Optional extra instructions prepended to messages[0].content."
 }
 ```
+
+`messages[0]` must be a `system` message. If any later `messages[i]` have role `system`, they are converted to `user` messages with content prefixed by `System: ` and a warning log is emitted with the original and normalized payload. If `messages[0]` is not `system`, the request is rejected before calling Ollama and the payload is logged.
 
 If `model` is not provided or cannot be resolved, the service falls back to `ollama.default-model` from `application.properties` (default: `llama3.2`). The service calls the local Ollama API on the same machine, so it does not require any external network access.
 
