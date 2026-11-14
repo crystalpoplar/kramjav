@@ -2,7 +2,10 @@ package com.example.kramjav.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 
@@ -13,11 +16,23 @@ import com.example.kramjav.web.AiRequest;
 
 class OllamaAiServiceTests {
 
+	private static OllamaProperties defaultProperties(boolean rejectRequestsWhenPcActive) {
+		return new OllamaProperties(
+			"http://127.0.0.1:11434",
+			"llama3.2",
+			rejectRequestsWhenPcActive,
+			60,
+			20L,
+			false,
+			Path.of(System.getProperty("user.home"), ".kramjav", "ollama-metrics.json").toString()
+		);
+	}
+
 	@Test
 	void resolveModelUsesExplicitModelWhenProvided() {
 		OllamaAiService service = new OllamaAiService(
 			RestClient.builder().build(),
-			new OllamaProperties("http://127.0.0.1:11434", "llama3.2", true, 60, 20L),
+			defaultProperties(true),
 			window -> false
 		);
 
@@ -28,7 +43,7 @@ class OllamaAiServiceTests {
 	void resolveModelFallsBackToConfiguredDefault() {
 		OllamaAiService service = new OllamaAiService(
 			RestClient.builder().build(),
-			new OllamaProperties("http://127.0.0.1:11434", "llama3.2", true, 60, 20L),
+			defaultProperties(true),
 			window -> false
 		);
 
@@ -40,7 +55,7 @@ class OllamaAiServiceTests {
 	void generateRejectsWhenPcActivityGatingIsEnabled() {
 		OllamaAiService service = new OllamaAiService(
 			RestClient.builder().baseUrl("http://127.0.0.1:11434").build(),
-			new OllamaProperties("http://127.0.0.1:11434", "llama3.2", true, 60, 20L),
+			defaultProperties(true),
 			window -> true
 		);
 
@@ -61,7 +76,7 @@ class OllamaAiServiceTests {
 	void generateRejectsRequestsWithoutUserMessages() {
 		OllamaAiService service = new OllamaAiService(
 			RestClient.builder().build(),
-			new OllamaProperties("http://127.0.0.1:11434", "llama3.2", false, 60, 20L),
+			defaultProperties(false),
 			window -> false
 		);
 
@@ -72,7 +87,7 @@ class OllamaAiServiceTests {
 	void generateTreatsBlankRoleAsUser() {
 		OllamaAiService service = new OllamaAiService(
 			RestClient.builder().baseUrl("http://127.0.0.1:65535").build(),
-			new OllamaProperties("http://127.0.0.1:11434", "llama3.2", false, 60, 20L),
+			defaultProperties(false),
 			window -> false
 		);
 
@@ -97,7 +112,7 @@ class OllamaAiServiceTests {
 		};
 		OllamaAiService service = new OllamaAiService(
 			RestClient.builder().baseUrl("http://127.0.0.1:65535").build(),
-			new OllamaProperties("http://127.0.0.1:11434", "llama3.2", false, 60, 20L),
+			defaultProperties(false),
 			detector
 		);
 
@@ -118,7 +133,7 @@ class OllamaAiServiceTests {
 	void generateRejectsWhenFirstMessageIsNotSystem() {
 		OllamaAiService service = new OllamaAiService(
 			RestClient.builder().build(),
-			new OllamaProperties("http://127.0.0.1:11434", "llama3.2", false, 60, 20L),
+			defaultProperties(false),
 			window -> false
 		);
 
@@ -136,10 +151,43 @@ class OllamaAiServiceTests {
 	}
 
 	@Test
+	void generateRecordsFailureMetrics() throws Exception {
+		Path metricsFile = Files.createTempFile("ollama-metrics", ".json");
+		OllamaProperties properties = new OllamaProperties(
+			"http://127.0.0.1:11434",
+			"llama3.2",
+			false,
+			60,
+			20L,
+			true,
+			metricsFile.toString()
+		);
+		OllamaMetricsRecorder metricsRecorder = new OllamaMetricsRecorder(properties);
+		OllamaAiService service = new OllamaAiService(
+			RestClient.builder().build(),
+			properties,
+			window -> false,
+			metricsRecorder
+		);
+
+		AiRequest request = new AiRequest(
+			null,
+			null,
+			List.of(new AiRequest.Message("system", "Only system text")),
+			null
+		);
+
+		assertThrows(IllegalArgumentException.class, () -> service.generate(request));
+		String metrics = metricsRecorder.metricsAsJson();
+		assertTrue(metrics.contains("\"failedRequests\": 1"));
+		assertTrue(metrics.contains("\"invalid-request\": 1"));
+	}
+
+	@Test
 	void generateInsertsTopLevelSystemWhenFirstMessageIsNotSystem() {
 		OllamaAiService service = new OllamaAiService(
 			RestClient.builder().baseUrl("http://127.0.0.1:65535").build(),
-			new OllamaProperties("http://127.0.0.1:11434", "llama3.2", false, 60, 20L),
+			defaultProperties(false),
 			window -> false
 		);
 

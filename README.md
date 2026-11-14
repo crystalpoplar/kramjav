@@ -26,6 +26,8 @@ By default, AI requests are rejected while this PC has recent local user activit
 
 Requests to Ollama also time out after `ollama.request-timeout-seconds` (default: `20`), and if the request hangs or the response is invalid the service performs a best-effort reset by issuing `ollama stop <model>` before retrying once (the retry naturally reloads the model).
 
+Ollama request metrics can be recorded locally by setting `ollama.metrics-enabled=true` and optionally overriding the path with `ollama.metrics-file=/path/to/ollama-metrics.json`. The file stores successful request counts, failed request counts grouped by failure reason, and aggregate processing time statistics such as total, average, minimum, maximum, and last request duration in milliseconds.
+
 ### AI request payload
 
 ```json

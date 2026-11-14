@@ -9,6 +9,7 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -24,36 +25,77 @@ public class OllamaAiService {
 	private final RestClient restClient;
 	private final OllamaProperties properties;
 	private final PcActivityDetector pcActivityDetector;
+	private final OllamaMetricsRecorder metricsRecorder;
 
 	public OllamaAiService(RestClient restClient, OllamaProperties properties, PcActivityDetector pcActivityDetector) {
+		this(restClient, properties, pcActivityDetector, new OllamaMetricsRecorder(properties));
+	}
+
+	@Autowired
+	public OllamaAiService(RestClient restClient, OllamaProperties properties, PcActivityDetector pcActivityDetector, OllamaMetricsRecorder metricsRecorder) {
 		this.restClient = restClient;
 		this.properties = properties;
 		this.pcActivityDetector = pcActivityDetector;
+		this.metricsRecorder = metricsRecorder == null ? new OllamaMetricsRecorder(properties) : metricsRecorder;
 	}
 
 	public AiResponse generate(AiRequest request) {
-		if (request == null) {
-			throw new IllegalArgumentException("A request body is required.");
+		long startedNanos = System.nanoTime();
+		try {
+			if (request == null) {
+				throw new IllegalArgumentException("A request body is required.");
+			}
+
+			List<AiRequest.Message> messages = request.normalizedMessages();
+			if (messages.isEmpty()) {
+				throw new IllegalArgumentException("Provide a prompt or at least one message.");
+			}
+			List<AiRequest.Message> normalizedForOllama = normalizeMessageRolesForOllama(request, messages);
+			validateUserMessages(normalizedForOllama);
+
+			rejectIfPcIsActive();
+
+			String model = resolveModel(request.model());
+			Map<String, Object> payload = buildPayload(model, normalizedForOllama);
+
+			AiResponse response = callOllamaWithRetry(payload, model, 1);
+			if (response != null) {
+				metricsRecorder.recordSuccess(Duration.ofNanos(System.nanoTime() - startedNanos).toMillis());
+				return response;
+			}
+
+				throw new IllegalStateException("Ollama returned an invalid payload for model '" + model + "'.");
+		} catch (RuntimeException ex) {
+			metricsRecorder.recordFailure(classifyFailure(ex), Duration.ofNanos(System.nanoTime() - startedNanos).toMillis());
+			throw ex;
 		}
+	}
 
-		List<AiRequest.Message> messages = request.normalizedMessages();
-		if (messages.isEmpty()) {
-			throw new IllegalArgumentException("Provide a prompt or at least one message.");
-		}
-		List<AiRequest.Message> normalizedForOllama = normalizeMessageRolesForOllama(request, messages);
-		validateUserMessages(normalizedForOllama);
-
-		rejectIfPcIsActive();
-
-		String model = resolveModel(request.model());
-		Map<String, Object> payload = buildPayload(model, normalizedForOllama);
-
-		AiResponse response = callOllamaWithRetry(payload, model, 1);
-		if (response != null) {
-			return response;
-		}
-
-		throw new IllegalStateException("Ollama returned an invalid payload for model '" + model + "'.");
+	private String classifyFailure(Throwable failure) {
+			if (failure == null) {
+				return "unknown";
+			}
+			if (failure instanceof ServiceBusyException) {
+				return "service-busy";
+			}
+			if (failure instanceof IllegalArgumentException) {
+				return "invalid-request";
+			}
+			if (failure instanceof IllegalStateException) {
+				String message = failure.getMessage();
+				if (message != null && message.toLowerCase().contains("ollama")) {
+					return "ollama-unavailable";
+				}
+				return "invalid-response";
+			}
+			if (failure instanceof RestClientException) {
+				return "ollama-unavailable";
+			}
+			Throwable cause = failure.getCause();
+			if (cause != null && cause != failure) {
+				return classifyFailure(cause);
+			}
+			return failure.getClass().getSimpleName();
 	}
 
 	private void validateUserMessages(List<AiRequest.Message> messages) {

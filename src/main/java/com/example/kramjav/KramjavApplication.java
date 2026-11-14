@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
+import com.example.kramjav.service.OllamaMetricsRecorder;
 import com.example.kramjav.service.OllamaProperties;
 
 @SpringBootApplication
@@ -15,6 +16,11 @@ public class KramjavApplication {
 
 	public static void main(String[] args) {
 		SpringApplication.run(KramjavApplication.class, args);
+	}
+
+	@Bean
+	OllamaMetricsRecorder ollamaMetricsRecorder(OllamaProperties properties) {
+		return new OllamaMetricsRecorder(properties);
 	}
 
 	@Bean
