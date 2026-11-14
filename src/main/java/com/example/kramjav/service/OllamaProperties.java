@@ -18,7 +18,7 @@ public record OllamaProperties(
 	public OllamaProperties {
 		baseUrl = (baseUrl == null || baseUrl.isBlank()) ? "http://127.0.0.1:11434" : baseUrl;
 		defaultModel = (defaultModel == null || defaultModel.isBlank()) ? "llama3.2" : defaultModel;
-		rejectRequestsWhenPcActive = rejectRequestsWhenPcActive == null || rejectRequestsWhenPcActive;
+		rejectRequestsWhenPcActive = Boolean.TRUE.equals(rejectRequestsWhenPcActive);
 		activityWindowSeconds = activityWindowSeconds <= 0 ? 60 : activityWindowSeconds;
 		requestTimeoutSeconds = requestTimeoutSeconds == null || requestTimeoutSeconds <= 0 ? 20 : requestTimeoutSeconds;
 		metricsEnabled = metricsEnabled != null && metricsEnabled;

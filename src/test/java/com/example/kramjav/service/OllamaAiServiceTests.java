@@ -29,6 +29,21 @@ class OllamaAiServiceTests {
 	}
 
 	@Test
+	void propertiesRejectRequestsWhenPcActiveDefaultsToFalse() {
+		OllamaProperties properties = new OllamaProperties(
+			"http://127.0.0.1:11434",
+			"llama3.2",
+			null,
+			60,
+			20L,
+			false,
+			Path.of(System.getProperty("user.home"), ".kramjav", "ollama-metrics.json").toString()
+		);
+
+		assertEquals(false, properties.rejectRequestsWhenPcActive());
+	}
+
+	@Test
 	void resolveModelUsesExplicitModelWhenProvided() {
 		OllamaAiService service = new OllamaAiService(
 			RestClient.builder().build(),
