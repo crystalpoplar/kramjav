@@ -66,21 +66,33 @@ public class OllamaAiService {
 
 	private List<AiRequest.Message> normalizeMessageRolesForOllama(AiRequest request, List<AiRequest.Message> messages) {
 		AiRequest.Message firstMessage = messages.get(0);
-		if (!"system".equals(normalizeRole(firstMessage.role()))) {
+		boolean firstIsSystem = "system".equals(normalizeRole(firstMessage.role()));
+		if (!firstIsSystem && (request.system() == null || request.system().isBlank())) {
 			String payloadSummary = summarizeRequestPayload(request, messages);
 			log.warn("Rejected request because messages[0] is not a system message. Payload: {}", payloadSummary);
 			throw new IllegalArgumentException("Request must include a system message at messages[0].");
 		}
 
 		List<AiRequest.Message> normalized = new ArrayList<>();
-		String firstSystemContent = firstMessage.content();
-		if (request.system() != null && !request.system().isBlank()) {
-			firstSystemContent = request.system().trim() + "\n\n" + firstSystemContent;
+		int startIndex = 1;
+		if (firstIsSystem) {
+			String firstSystemContent = firstMessage.content();
+			if (request.system() != null && !request.system().isBlank()) {
+				firstSystemContent = request.system().trim() + "\n\n" + firstSystemContent;
+			}
+			normalized.add(new AiRequest.Message("system", firstSystemContent));
+		} else {
+			String insertedSystem = request.system().trim();
+			normalized.add(new AiRequest.Message("system", insertedSystem));
+			startIndex = 0;
+			log.warn(
+				"Inserted top-level system prompt into messages[0] because incoming messages[0] was not system. Original payload: {}",
+				summarizeRequestPayload(request, messages)
+			);
 		}
-		normalized.add(new AiRequest.Message("system", firstSystemContent));
 
 		boolean transformedOutOfOrderSystemMessage = false;
-		for (int i = 1; i < messages.size(); i++) {
+		for (int i = startIndex; i < messages.size(); i++) {
 			AiRequest.Message message = messages.get(i);
 			String role = normalizeRole(message.role());
 			if ("system".equals(role)) {

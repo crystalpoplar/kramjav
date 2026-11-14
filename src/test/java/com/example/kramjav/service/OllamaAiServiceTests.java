@@ -134,4 +134,25 @@ class OllamaAiServiceTests {
 
 		assertThrows(IllegalArgumentException.class, () -> service.generate(request));
 	}
+
+	@Test
+	void generateInsertsTopLevelSystemWhenFirstMessageIsNotSystem() {
+		OllamaAiService service = new OllamaAiService(
+			RestClient.builder().baseUrl("http://127.0.0.1:65535").build(),
+			new OllamaProperties("http://127.0.0.1:11434", "llama3.2", false, 60, 20L),
+			window -> false
+		);
+
+		AiRequest request = new AiRequest(
+			null,
+			null,
+			List.of(
+				new AiRequest.Message("user", "Hello"),
+				new AiRequest.Message("assistant", "Hi")
+			),
+			"You are helpful."
+		);
+
+		assertThrows(IllegalStateException.class, () -> service.generate(request));
+	}
 }

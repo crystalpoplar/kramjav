@@ -39,7 +39,7 @@ Requests to Ollama also time out after `ollama.request-timeout-seconds` (default
 }
 ```
 
-`messages[0]` must be a `system` message. If any later `messages[i]` have role `system`, they are converted to `user` messages with content prefixed by `System: ` and a warning log is emitted with the original and normalized payload. If `messages[0]` is not `system`, the request is rejected before calling Ollama and the payload is logged.
+`messages[0]` must be a `system` message. If it is not, but the top-level `system` key is present, the service inserts that `system` content as `messages[0]` and logs a warning with payload details. If neither condition is true, the request is rejected before calling Ollama and the payload is logged. If any later `messages[i]` have role `system`, they are converted to `user` messages with content prefixed by `System: ` and a warning log is emitted with the original and normalized payload.
 
 If `model` is not provided or cannot be resolved, the service falls back to `ollama.default-model` from `application.properties` (default: `llama3.2`). The service calls the local Ollama API on the same machine, so it does not require any external network access.
 
